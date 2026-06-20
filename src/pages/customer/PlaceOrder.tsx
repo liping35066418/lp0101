@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Minus, Plus, Trash2, Clock, AlertTriangle } from "lucide-react";
 import { useOrderStore } from "@/store/orderStore";
 import { calculateFee } from "@/lib/api";
+import { getStorageFeeBreakdown, STORAGE_FREE_HOURS, STORAGE_FEE_TIER1_RATE, STORAGE_FEE_TIER1_HOURS, STORAGE_FEE_TIER2_RATE, STORAGE_FEE_MAX_RATIO } from "@/lib/utils";
 
 export default function PlaceOrder() {
   const navigate = useNavigate();
@@ -21,22 +22,23 @@ export default function PlaceOrder() {
   const [simulateOverdueHours, setSimulateOverdueHours] = useState(0);
   const [feePreview, setFeePreview] = useState<{
     fee: number;
-    rate: number;
+    breakdown: ReturnType<typeof getStorageFeeBreakdown>;
   } | null>(null);
 
   const itemsTotal = getCartTotal();
 
   useEffect(() => {
     if (simulateOverdueHours > 0) {
-      calculateFee(simulateOverdueHours).then((data) => {
-        setFeePreview({ fee: data.fee, rate: data.rate });
+      calculateFee(simulateOverdueHours, itemsTotal).then((data) => {
+        const breakdown = getStorageFeeBreakdown(simulateOverdueHours, itemsTotal);
+        setFeePreview({ fee: data.fee, breakdown });
       }).catch(() => {
         setFeePreview(null);
       });
     } else {
       setFeePreview(null);
     }
-  }, [simulateOverdueHours]);
+  }, [simulateOverdueHours, itemsTotal]);
 
   const totalAmount = itemsTotal + (feePreview?.fee ?? 0);
 
@@ -207,16 +209,45 @@ export default function PlaceOrder() {
           </div>
           {feePreview && simulateOverdueHours > 0 && (
             <div className="mt-3 rounded-lg bg-white p-3 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>逾期时长</span>
-                <span>{simulateOverdueHours} 小时</span>
+              <div className="mb-2 border-b border-gray-100 pb-2">
+                <p className="text-xs text-gray-500">
+                  计费规则：取货截止后{STORAGE_FREE_HOURS}小时免费；之后{STORAGE_FEE_TIER1_HOURS}小时内{STORAGE_FEE_TIER1_RATE}元/小时；超过{STORAGE_FEE_TIER1_HOURS}小时后{STORAGE_FEE_TIER2_RATE}元/小时；不满1小时按1小时算；封顶为商品金额的{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%。
+                </p>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>保管费率</span>
-                <span>¥{feePreview.rate}/小时</span>
+              <div className="space-y-1">
+                <div className="flex justify-between text-gray-600">
+                  <span>逾期时长</span>
+                  <span>{simulateOverdueHours} 小时</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>计费时长</span>
+                  <span>{feePreview.breakdown.billableHours} 小时（向上取整）</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>免费时长</span>
+                  <span>{feePreview.breakdown.freeHours} 小时</span>
+                </div>
+                {feePreview.breakdown.tier1Hours > 0 && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>第一档（{STORAGE_FEE_TIER1_RATE}元/小时）</span>
+                    <span>{feePreview.breakdown.tier1Hours} 小时 × ¥{STORAGE_FEE_TIER1_RATE} = ¥{(feePreview.breakdown.tier1Hours * STORAGE_FEE_TIER1_RATE).toFixed(2)}</span>
+                  </div>
+                )}
+                {feePreview.breakdown.tier2Hours > 0 && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>第二档（{STORAGE_FEE_TIER2_RATE}元/小时）</span>
+                    <span>{feePreview.breakdown.tier2Hours} 小时 × ¥{STORAGE_FEE_TIER2_RATE} = ¥{(feePreview.breakdown.tier2Hours * STORAGE_FEE_TIER2_RATE).toFixed(2)}</span>
+                  </div>
+                )}
+                {feePreview.breakdown.maxFee !== null && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>封顶金额（{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%）</span>
+                    <span>¥{feePreview.breakdown.maxFee.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
-              <div className="mt-1 flex justify-between font-semibold text-red-600">
-                <span>保管费</span>
+              <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between font-semibold text-red-600">
+                <span>保管费合计</span>
                 <span>¥{feePreview.fee.toFixed(2)}</span>
               </div>
             </div>

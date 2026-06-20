@@ -68,9 +68,28 @@ export async function pickupOrder(orderId: string): Promise<Order> {
   return request<Order>(`/orders/${orderId}/pickup`, { method: "PATCH" });
 }
 
-export async function calculateFee(overdueHours: number): Promise<{ overdueHours: number; fee: number; rate: number; unit: string }> {
+export async function calculateFee(overdueHours: number, totalAmount: number = 0): Promise<{
+  overdueHours: number;
+  fee: number;
+  freeHours: number;
+  tier1Rate: number;
+  tier1Hours: number;
+  tier2Rate: number;
+  maxRatio: number;
+  totalAmount: number;
+  maxFee: number | null;
+}> {
   return request("/orders/calculate-fee", {
     method: "POST",
-    body: JSON.stringify({ overdueHours }),
+    body: JSON.stringify({ overdueHours, totalAmount }),
   });
+}
+
+export async function fetchTodayOverview(): Promise<{
+  totalOrders: number;
+  pendingCount: number;
+  overdueCount: number;
+  totalStorageFee: number;
+}> {
+  return request("/orders/overview/today");
 }

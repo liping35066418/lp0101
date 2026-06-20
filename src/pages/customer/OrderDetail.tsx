@@ -11,6 +11,7 @@ import { fetchOrderById, pickupOrder } from "@/lib/api";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/types";
 import type { Order, OrderStatus } from "@/lib/types";
 import Modal from "@/components/Modal";
+import { getStorageFeeBreakdown, STORAGE_FREE_HOURS, STORAGE_FEE_TIER1_RATE, STORAGE_FEE_TIER1_HOURS, STORAGE_FEE_TIER2_RATE, STORAGE_FEE_MAX_RATIO } from "@/lib/utils";
 
 const TIMELINE_STEPS: {
   status: OrderStatus;
@@ -254,20 +255,52 @@ export default function OrderDetail() {
               <AlertTriangle size={14} />
               保管费明细
             </h2>
-            <div className="space-y-1 text-sm text-red-600">
-              <div className="flex justify-between">
-                <span>逾期时长</span>
-                <span>{order.simulateOverdueHours} 小时</span>
-              </div>
-              <div className="flex justify-between">
-                <span>保管费率</span>
-                <span>¥{order.storageFeeRate || 0}/小时</span>
-              </div>
-              <div className="flex justify-between font-semibold">
-                <span>保管费合计</span>
-                <span>¥{storageFee.toFixed(2)}</span>
-              </div>
+            <div className="mb-2 border-b border-red-100 pb-2">
+              <p className="text-xs text-red-600">
+                计费规则：取货截止后{STORAGE_FREE_HOURS}小时免费；之后{STORAGE_FEE_TIER1_HOURS}小时内{STORAGE_FEE_TIER1_RATE}元/小时；超过{STORAGE_FEE_TIER1_HOURS}小时后{STORAGE_FEE_TIER2_RATE}元/小时；不满1小时按1小时算；封顶为商品金额的{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%。
+              </p>
             </div>
+            {(() => {
+              const breakdown = getStorageFeeBreakdown(order.simulateOverdueHours, itemsTotal);
+              return (
+                <div className="space-y-1 text-sm text-red-600">
+                  <div className="flex justify-between">
+                    <span>逾期时长</span>
+                    <span>{order.simulateOverdueHours} 小时</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>计费时长</span>
+                    <span>{breakdown.billableHours} 小时（向上取整）</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>免费时长</span>
+                    <span>{breakdown.freeHours} 小时</span>
+                  </div>
+                  {breakdown.tier1Hours > 0 && (
+                    <div className="flex justify-between">
+                      <span>第一档（{STORAGE_FEE_TIER1_RATE}元/小时）</span>
+                      <span>{breakdown.tier1Hours} 小时 × ¥{STORAGE_FEE_TIER1_RATE} = ¥{(breakdown.tier1Hours * STORAGE_FEE_TIER1_RATE).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {breakdown.tier2Hours > 0 && (
+                    <div className="flex justify-between">
+                      <span>第二档（{STORAGE_FEE_TIER2_RATE}元/小时）</span>
+                      <span>{breakdown.tier2Hours} 小时 × ¥{STORAGE_FEE_TIER2_RATE} = ¥{(breakdown.tier2Hours * STORAGE_FEE_TIER2_RATE).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {breakdown.maxFee !== null && (
+                    <div className="flex justify-between">
+                      <span>封顶金额（{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%）</span>
+                      <span>¥{breakdown.maxFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="pt-2 mt-1 border-t border-red-100 flex justify-between font-semibold">
+                    <span>保管费合计</span>
+                    <span>¥{storageFee.toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         )}
 
@@ -292,10 +325,41 @@ export default function OrderDetail() {
             <span>¥{itemsTotal.toFixed(2)}</span>
           </div>
           {storageFee > 0 && (
-            <div className="flex justify-between text-gray-600">
-              <span>保管费（逾期 {order.simulateOverdueHours} 小时）</span>
-              <span>¥{storageFee.toFixed(2)}</span>
-            </div>
+            <>
+              <div className="flex justify-between text-gray-600">
+                <span>逾期时长</span>
+                <span>{order.simulateOverdueHours} 小时</span>
+              </div>
+              {(() => {
+                const breakdown = getStorageFeeBreakdown(order.simulateOverdueHours, itemsTotal);
+                return (
+                  <>
+                    {breakdown.tier1Hours > 0 && (
+                      <div className="flex justify-between text-gray-600">
+                        <span>第一档 {breakdown.tier1Hours} 小时 × ¥{STORAGE_FEE_TIER1_RATE}</span>
+                        <span>¥{(breakdown.tier1Hours * STORAGE_FEE_TIER1_RATE).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {breakdown.tier2Hours > 0 && (
+                      <div className="flex justify-between text-gray-600">
+                        <span>第二档 {breakdown.tier2Hours} 小时 × ¥{STORAGE_FEE_TIER2_RATE}</span>
+                        <span>¥{(breakdown.tier2Hours * STORAGE_FEE_TIER2_RATE).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {breakdown.maxFee !== null && breakdown.fee === breakdown.maxFee && (
+                      <div className="flex justify-between text-amber-600 text-xs">
+                        <span>已封顶（商品金额{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%）</span>
+                        <span>封顶 ¥{breakdown.maxFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-medium text-gray-800">
+                      <span>保管费合计</span>
+                      <span>¥{storageFee.toFixed(2)}</span>
+                    </div>
+                  </>
+                );
+              })()}
+            </>
           )}
           <div className="border-t pt-3">
             <div className="flex justify-between text-base font-bold">

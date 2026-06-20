@@ -41,7 +41,48 @@ export interface Order {
   simulateOverdueHours: number;
 }
 
-export const STORAGE_FEE_PER_HOUR = 2;
+export const STORAGE_FREE_HOURS = 1;
+export const STORAGE_FEE_TIER1_RATE = 2;
+export const STORAGE_FEE_TIER1_HOURS = 6;
+export const STORAGE_FEE_TIER2_RATE = 4;
+export const STORAGE_FEE_MAX_RATIO = 0.5;
+
+export function calculateStorageFee(
+  deadline: Date,
+  now: Date,
+  totalAmount: number = 0,
+  simulateOverdueHours: number = 0
+): number {
+  let overdueHours: number;
+  
+  if (simulateOverdueHours > 0) {
+    overdueHours = simulateOverdueHours;
+  } else {
+    const diffMs = now.getTime() - deadline.getTime();
+    if (diffMs <= 0) return 0;
+    overdueHours = diffMs / (1000 * 60 * 60);
+  }
+
+  if (overdueHours <= 0) return 0;
+
+  const billableHours = Math.ceil(overdueHours);
+  const freeHours = STORAGE_FREE_HOURS;
+
+  if (billableHours <= freeHours) return 0;
+
+  const hoursAfterFree = billableHours - freeHours;
+  const tier1Hours = Math.min(hoursAfterFree, STORAGE_FEE_TIER1_HOURS);
+  const tier2Hours = Math.max(0, hoursAfterFree - STORAGE_FEE_TIER1_HOURS);
+
+  const fee = tier1Hours * STORAGE_FEE_TIER1_RATE + tier2Hours * STORAGE_FEE_TIER2_RATE;
+
+  if (totalAmount > 0) {
+    const maxFee = totalAmount * STORAGE_FEE_MAX_RATIO;
+    return Math.min(fee, maxFee);
+  }
+
+  return fee;
+}
 
 const products: Product[] = [
   { id: "p1", name: "有机番茄", price: 8.9, unit: "斤", category: "蔬菜", stock: 100, imageUrl: "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=fresh red organic tomatoes on white background, realistic food photography&image_size=square_hd" },
@@ -106,8 +147,8 @@ export function createOrder(
       pickupDeadline: adjustedDeadline.toISOString(),
       sortedAt: now.toISOString(),
       pickedUpAt: null,
-      storageFee: calculateStorageFee(adjustedDeadline, now, simulateOverdueHours),
-      storageFeeRate: STORAGE_FEE_PER_HOUR,
+      storageFee: calculateStorageFee(adjustedDeadline, now, totalAmount, simulateOverdueHours),
+      storageFeeRate: STORAGE_FEE_TIER1_RATE,
       simulateOverdueHours,
     };
     orders.unshift(order);
@@ -126,26 +167,11 @@ export function createOrder(
     sortedAt: null,
     pickedUpAt: null,
     storageFee: 0,
-    storageFeeRate: STORAGE_FEE_PER_HOUR,
+    storageFeeRate: STORAGE_FEE_TIER1_RATE,
     simulateOverdueHours: 0,
   };
   orders.unshift(order);
   return order;
-}
-
-export function calculateStorageFee(
-  deadline: Date,
-  now: Date,
-  simulateOverdueHours: number = 0
-): number {
-  if (simulateOverdueHours > 0) {
-    const hours = Math.ceil(simulateOverdueHours);
-    return hours * STORAGE_FEE_PER_HOUR;
-  }
-  const diffMs = now.getTime() - deadline.getTime();
-  if (diffMs <= 0) return 0;
-  const hours = Math.ceil(diffMs / (1000 * 60 * 60));
-  return hours * STORAGE_FEE_PER_HOUR;
 }
 
 export function startSorting(orderId: string): Order | null {
@@ -170,7 +196,7 @@ export function pickupOrder(orderId: string): Order | null {
 
   const now = new Date();
   const deadline = new Date(order.pickupDeadline);
-  const storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
+  const storageFee = calculateStorageFee(deadline, now, order.totalAmount, order.simulateOverdueHours);
 
   order.status = "picked_up";
   order.pickedUpAt = now.toISOString();
@@ -185,11 +211,11 @@ export function refreshOverdueStatus(): Order[] {
       const deadline = new Date(order.pickupDeadline);
       if (now > deadline) {
         order.status = "overdue";
-        order.storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
+        order.storageFee = calculateStorageFee(deadline, now, order.totalAmount, order.simulateOverdueHours);
       }
     } else if (order.status === "overdue") {
       const deadline = new Date(order.pickupDeadline);
-      order.storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
+      order.storageFee = calculateStorageFee(deadline, now, order.totalAmount, order.simulateOverdueHours);
     }
   }
   return orders;

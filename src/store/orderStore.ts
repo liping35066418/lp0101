@@ -8,6 +8,7 @@ import {
   fetchReadyForPickupOrders,
   fetchOverdueOrders,
   fetchNearDeadlineOrders,
+  fetchTodayOverview,
 } from "../lib/api";
 import type { OrderItem } from "../lib/types";
 
@@ -19,6 +20,12 @@ interface OrderStore {
   readyOrders: Order[];
   overdueOrders: Order[];
   nearDeadlineOrders: Order[];
+  todayOverview: {
+    totalOrders: number;
+    pendingCount: number;
+    overdueCount: number;
+    totalStorageFee: number;
+  } | null;
   loading: boolean;
   error: string | null;
 
@@ -34,6 +41,7 @@ interface OrderStore {
   fetchReadyOrders: () => Promise<void>;
   fetchOverdueOrders: () => Promise<void>;
   fetchNearDeadlineOrders: (minutes?: number) => Promise<void>;
+  fetchTodayOverview: () => Promise<void>;
   placeOrder: (
     customerName: string,
     customerPhone: string,
@@ -50,6 +58,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   readyOrders: [],
   overdueOrders: [],
   nearDeadlineOrders: [],
+  todayOverview: null,
   loading: false,
   error: null,
 
@@ -141,6 +150,15 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ nearDeadlineOrders });
     } catch (e) {
       console.error("Failed to fetch near deadline orders:", e);
+    }
+  },
+
+  fetchTodayOverview: async () => {
+    try {
+      const overview = await fetchTodayOverview();
+      set({ todayOverview: overview });
+    } catch (e) {
+      console.error("Failed to fetch today overview:", e);
     }
   },
 

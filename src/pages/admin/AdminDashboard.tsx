@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Play, CheckCircle, Clock, AlertTriangle, Bell, RefreshCw } from "lucide-react";
+import { Play, CheckCircle, Clock, AlertTriangle, Bell, RefreshCw, TrendingUp, Package, ShoppingCart, DollarSign } from "lucide-react";
 import { useOrderStore } from "@/store/orderStore";
 import { startSorting, completeSorting } from "@/lib/api";
 import type { Order } from "@/lib/types";
 import OrderCard from "@/components/OrderCard";
 import NearDeadlineModal from "@/components/NearDeadlineModal";
+import { getStorageFeeBreakdown, STORAGE_FREE_HOURS, STORAGE_FEE_TIER1_RATE, STORAGE_FEE_TIER1_HOURS, STORAGE_FEE_TIER2_RATE, STORAGE_FEE_MAX_RATIO } from "@/lib/utils";
 
 type TabKey = "pending" | "sorting" | "ready" | "overdue";
 
@@ -80,12 +81,14 @@ export default function AdminDashboard() {
     readyOrders,
     overdueOrders,
     nearDeadlineOrders,
+    todayOverview,
     loading,
     fetchPendingOrders,
     fetchOrders,
     fetchReadyOrders,
     fetchOverdueOrders,
     fetchNearDeadlineOrders,
+    fetchTodayOverview,
   } = useOrderStore();
 
   const refreshAll = useCallback(async () => {
@@ -94,8 +97,9 @@ export default function AdminDashboard() {
       fetchOrders(),
       fetchReadyOrders(),
       fetchOverdueOrders(),
+      fetchTodayOverview(),
     ]);
-  }, [fetchPendingOrders, fetchOrders, fetchReadyOrders, fetchOverdueOrders]);
+  }, [fetchPendingOrders, fetchOrders, fetchReadyOrders, fetchOverdueOrders, fetchTodayOverview]);
 
   const loadSortingOrders = useCallback(async () => {
     await fetchOrders();
@@ -133,7 +137,11 @@ export default function AdminDashboard() {
     setActionLoading(orderId);
     try {
       await startSorting(orderId);
-      await Promise.all([fetchPendingOrders(), loadSortingOrders()]);
+      await Promise.all([
+        fetchPendingOrders(),
+        loadSortingOrders(),
+        fetchTodayOverview(),
+      ]);
     } catch (error) {
       console.error("Failed to start sorting:", error);
     } finally {
@@ -145,7 +153,11 @@ export default function AdminDashboard() {
     setActionLoading(orderId);
     try {
       await completeSorting(orderId);
-      await Promise.all([loadSortingOrders(), fetchReadyOrders()]);
+      await Promise.all([
+        loadSortingOrders(),
+        fetchReadyOrders(),
+        fetchTodayOverview(),
+      ]);
     } catch (error) {
       console.error("Failed to complete sorting:", error);
     } finally {
@@ -205,24 +217,51 @@ export default function AdminDashboard() {
     </div>
   );
 
-  const renderOverdueExtra = (order: Order) => (
-    <div className="space-y-2 rounded-md bg-red-50 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">原取货截止时间</span>
-        <span className="text-sm text-gray-700">
-          {new Date(order.pickupDeadline).toLocaleString("zh-CN")}
-        </span>
+  const renderOverdueExtra = (order: Order) => {
+    const itemsTotal = order.items.reduce((s, i) => s + i.subtotal, 0);
+    const breakdown = getStorageFeeBreakdown(order.simulateOverdueHours || 0, itemsTotal);
+    return (
+      <div className="space-y-2 rounded-md bg-red-50 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">原取货截止时间</span>
+          <span className="text-sm text-gray-700">
+            {new Date(order.pickupDeadline).toLocaleString("zh-CN")}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">逾期时长</span>
+          <OverdueDuration deadline={order.pickupDeadline} />
+        </div>
+        <div className="border-t border-red-100 pt-2">
+          <p className="text-xs text-gray-500 mb-1">
+            计费：{STORAGE_FREE_HOURS}小时免费，后{STORAGE_FEE_TIER1_HOURS}小时{STORAGE_FEE_TIER1_RATE}元/小时，超{STORAGE_FEE_TIER1_HOURS}小时后{STORAGE_FEE_TIER2_RATE}元/小时
+          </p>
+          {breakdown.tier1Hours > 0 && (
+            <div className="flex items-center justify-between text-xs text-gray-600">
+              <span>第一档 {breakdown.tier1Hours}小时 × ¥{STORAGE_FEE_TIER1_RATE}</span>
+              <span>¥{(breakdown.tier1Hours * STORAGE_FEE_TIER1_RATE).toFixed(2)}</span>
+            </div>
+          )}
+          {breakdown.tier2Hours > 0 && (
+            <div className="flex items-center justify-between text-xs text-gray-600">
+              <span>第二档 {breakdown.tier2Hours}小时 × ¥{STORAGE_FEE_TIER2_RATE}</span>
+              <span>¥{(breakdown.tier2Hours * STORAGE_FEE_TIER2_RATE).toFixed(2)}</span>
+            </div>
+          )}
+          {breakdown.maxFee !== null && breakdown.fee === breakdown.maxFee && (
+            <div className="flex items-center justify-between text-xs text-amber-600">
+              <span>已封顶（商品金额{(STORAGE_FEE_MAX_RATIO * 100).toFixed(0)}%）</span>
+              <span>封顶 ¥{breakdown.maxFee.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">累计仓储费</span>
+          <OverdueFee order={order} />
+        </div>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">逾期时长</span>
-        <OverdueDuration deadline={order.pickupDeadline} />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">累计仓储费（2元/小时）</span>
-        <OverdueFee order={order} />
-      </div>
-    </div>
-  );
+    );
+  };
 
   const getTabOrders = (): Order[] => {
     switch (activeTab) {
@@ -267,6 +306,55 @@ export default function AdminDashboard() {
             刷新
           </button>
         </div>
+
+        {todayOverview && (
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
+                  <TrendingUp className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">今日订单</p>
+                  <p className="text-xl font-bold text-gray-900">{todayOverview.totalOrders}</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100">
+                  <ShoppingCart className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">待取货</p>
+                  <p className="text-xl font-bold text-gray-900">{todayOverview.pendingCount}</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">逾期</p>
+                  <p className="text-xl font-bold text-red-600">{todayOverview.overdueCount}</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
+                  <DollarSign className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">已收保管费</p>
+                  <p className="text-xl font-bold text-amber-600">¥{todayOverview.totalStorageFee.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mb-6 flex gap-1 rounded-lg bg-gray-100 p-1">
           {TABS.map(({ key, label, icon: Icon }) => (

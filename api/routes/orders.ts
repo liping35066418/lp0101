@@ -12,8 +12,13 @@ import {
   getReadyForPickupOrders,
   getOverdueOrders,
   getNearDeadlineOrders,
+  getTodayOrders,
   calculateStorageFee,
-  STORAGE_FEE_PER_HOUR,
+  STORAGE_FREE_HOURS,
+  STORAGE_FEE_TIER1_RATE,
+  STORAGE_FEE_TIER1_HOURS,
+  STORAGE_FEE_TIER2_RATE,
+  STORAGE_FEE_MAX_RATIO,
 } from "../store.js";
 
 const router = Router();
@@ -105,15 +110,50 @@ router.patch("/:id/pickup", (req: Request, res: Response): void => {
 });
 
 router.post("/calculate-fee", (req: Request, res: Response): void => {
-  const { overdueHours } = req.body;
+  const { overdueHours, totalAmount = 0 } = req.body;
   if (typeof overdueHours !== "number" || overdueHours < 0) {
     res.status(400).json({ success: false, error: "无效的超时小时数" });
     return;
   }
   const now = new Date();
   const deadline = new Date(now.getTime() - overdueHours * 60 * 60 * 1000);
-  const fee = calculateStorageFee(deadline, now);
-  res.json({ success: true, data: { overdueHours, fee, rate: STORAGE_FEE_PER_HOUR, unit: "元/小时" } });
+  const fee = calculateStorageFee(deadline, now, totalAmount, overdueHours);
+  res.json({
+    success: true,
+    data: {
+      overdueHours,
+      fee,
+      freeHours: STORAGE_FREE_HOURS,
+      tier1Rate: STORAGE_FEE_TIER1_RATE,
+      tier1Hours: STORAGE_FEE_TIER1_HOURS,
+      tier2Rate: STORAGE_FEE_TIER2_RATE,
+      maxRatio: STORAGE_FEE_MAX_RATIO,
+      totalAmount,
+      maxFee: totalAmount > 0 ? totalAmount * STORAGE_FEE_MAX_RATIO : null,
+    },
+  });
+});
+
+router.get("/overview/today", (_req: Request, res: Response): void => {
+  refreshOverdueStatus();
+  const todayOrders = getTodayOrders();
+  const allOrders = getOrders();
+  const totalOrders = todayOrders.length;
+  const pendingCount = allOrders.filter((o) => o.status === "ready_for_pickup").length;
+  const overdueCount = getOverdueOrders().length;
+  const totalStorageFee = todayOrders
+    .filter((o) => o.status === "picked_up")
+    .reduce((sum, o) => sum + o.storageFee, 0);
+
+  res.json({
+    success: true,
+    data: {
+      totalOrders,
+      pendingCount,
+      overdueCount,
+      totalStorageFee,
+    },
+  });
 });
 
 export default router;
