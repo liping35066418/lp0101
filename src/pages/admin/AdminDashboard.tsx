@@ -41,23 +41,9 @@ function CountdownTimer({ deadline }: { deadline: string }) {
 }
 
 function OverdueFee({ order }: { order: Order }) {
-  const [fee, setFee] = useState(order.storageFee);
-
-  useEffect(() => {
-    const overdueMs = Date.now() - new Date(order.pickupDeadline).getTime();
-    const overdueHours = Math.max(0, overdueMs / 3600000);
-    setFee(overdueHours * 2);
-    const timer = setInterval(() => {
-      const ms = Date.now() - new Date(order.pickupDeadline).getTime();
-      const hours = Math.max(0, ms / 3600000);
-      setFee(hours * 2);
-    }, 60000);
-    return () => clearInterval(timer);
-  }, [order.pickupDeadline]);
-
   return (
     <span className="font-mono text-sm text-red-600 font-bold">
-      ¥{fee.toFixed(2)}
+      ¥{order.storageFee.toFixed(2)}
     </span>
   );
 }

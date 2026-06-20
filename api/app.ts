@@ -34,20 +34,24 @@ app.use(
   },
 )
 
-app.use((_error: Error, _req: Request, res: Response) => {
-  res.status(500).json({
-    success: false,
-    error: 'Server internal error',
-  })
-})
-
 /**
- * 404 handler
+ * 404 handler - must come before error handler
  */
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     success: false,
     error: 'API not found',
+  })
+})
+
+/**
+ * Global error handler - must have 4 parameters and be last
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((_error: Error, _req: Request, res: Response, _next: unknown) => {
+  res.status(500).json({
+    success: false,
+    error: 'Server internal error',
   })
 })
 

@@ -7,7 +7,7 @@ import {
   AlertTriangle,
   ChevronLeft,
 } from "lucide-react";
-import { fetchOrderById, pickupOrder, calculateFee } from "@/lib/api";
+import { fetchOrderById, pickupOrder } from "@/lib/api";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/types";
 import type { Order, OrderStatus } from "@/lib/types";
 import Modal from "@/components/Modal";
@@ -40,11 +40,6 @@ export default function OrderDetail() {
   const [loading, setLoading] = useState(true);
   const [showPickupModal, setShowPickupModal] = useState(false);
   const [pickupLoading, setPickupLoading] = useState(false);
-  const [feeInfo, setFeeInfo] = useState<{
-    fee: number;
-    rate: number;
-    overdueHours: number;
-  } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -53,16 +48,6 @@ export default function OrderDetail() {
       .then(setOrder)
       .finally(() => setLoading(false));
   }, [id]);
-
-  useEffect(() => {
-    if (order && order.status === "overdue" && order.simulateOverdueHours > 0) {
-      calculateFee(order.simulateOverdueHours).then((data) => {
-        setFeeInfo({ fee: data.fee, rate: data.rate, overdueHours: data.overdueHours });
-      }).catch((error) => {
-        console.error("Failed to calculate fee:", error);
-      });
-    }
-  }, [order]);
 
   const handlePickup = async () => {
     if (!id) return;
@@ -104,7 +89,7 @@ export default function OrderDetail() {
   const isOverdue = order.status === "overdue";
   const canPickup =
     order.status === "ready_for_pickup" || order.status === "overdue";
-  const storageFee = order.storageFee || feeInfo?.fee || 0;
+  const storageFee = order.storageFee || 0;
   const itemsTotal = order.items.reduce((s, i) => s + i.subtotal, 0);
 
   const formatTime = (iso: string | null) => {
@@ -276,7 +261,7 @@ export default function OrderDetail() {
               </div>
               <div className="flex justify-between">
                 <span>保管费率</span>
-                <span>¥{order.storageFeeRate || feeInfo?.rate || 0}/小时</span>
+                <span>¥{order.storageFeeRate || 0}/小时</span>
               </div>
               <div className="flex justify-between font-semibold">
                 <span>保管费合计</span>

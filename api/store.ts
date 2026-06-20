@@ -106,7 +106,7 @@ export function createOrder(
       pickupDeadline: adjustedDeadline.toISOString(),
       sortedAt: now.toISOString(),
       pickedUpAt: null,
-      storageFee: calculateStorageFee(adjustedDeadline, now),
+      storageFee: calculateStorageFee(adjustedDeadline, now, simulateOverdueHours),
       storageFeeRate: STORAGE_FEE_PER_HOUR,
       simulateOverdueHours,
     };
@@ -133,7 +133,15 @@ export function createOrder(
   return order;
 }
 
-export function calculateStorageFee(deadline: Date, now: Date): number {
+export function calculateStorageFee(
+  deadline: Date,
+  now: Date,
+  simulateOverdueHours: number = 0
+): number {
+  if (simulateOverdueHours > 0) {
+    const hours = Math.ceil(simulateOverdueHours);
+    return hours * STORAGE_FEE_PER_HOUR;
+  }
   const diffMs = now.getTime() - deadline.getTime();
   if (diffMs <= 0) return 0;
   const hours = Math.ceil(diffMs / (1000 * 60 * 60));
@@ -162,7 +170,7 @@ export function pickupOrder(orderId: string): Order | null {
 
   const now = new Date();
   const deadline = new Date(order.pickupDeadline);
-  const storageFee = calculateStorageFee(deadline, now);
+  const storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
 
   order.status = "picked_up";
   order.pickedUpAt = now.toISOString();
@@ -177,11 +185,11 @@ export function refreshOverdueStatus(): Order[] {
       const deadline = new Date(order.pickupDeadline);
       if (now > deadline) {
         order.status = "overdue";
-        order.storageFee = calculateStorageFee(deadline, now);
+        order.storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
       }
     } else if (order.status === "overdue") {
       const deadline = new Date(order.pickupDeadline);
-      order.storageFee = calculateStorageFee(deadline, now);
+      order.storageFee = calculateStorageFee(deadline, now, order.simulateOverdueHours);
     }
   }
   return orders;

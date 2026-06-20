@@ -12,6 +12,8 @@ import {
   getReadyForPickupOrders,
   getOverdueOrders,
   getNearDeadlineOrders,
+  calculateStorageFee,
+  STORAGE_FEE_PER_HOUR,
 } from "../store.js";
 
 const router = Router();
@@ -108,8 +110,10 @@ router.post("/calculate-fee", (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: "无效的超时小时数" });
     return;
   }
-  const fee = Math.ceil(overdueHours) * 2;
-  res.json({ success: true, data: { overdueHours, fee, rate: 2, unit: "元/小时" } });
+  const now = new Date();
+  const deadline = new Date(now.getTime() - overdueHours * 60 * 60 * 1000);
+  const fee = calculateStorageFee(deadline, now);
+  res.json({ success: true, data: { overdueHours, fee, rate: STORAGE_FEE_PER_HOUR, unit: "元/小时" } });
 });
 
 export default router;
